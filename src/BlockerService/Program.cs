@@ -15,6 +15,7 @@ builder.Services.Configure<BlockingPolicy>(
 
 // Registra il worker service principale
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<IpcServerWorker>();
 
 var host = builder.Build();
 host.Run();

@@ -63,29 +63,122 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// RF1/RF4: Loop di polling processi.
-    /// Interroga il sistema ogni PollingIntervalMs e termina i processi in blacklist.
+    /// RF4: Determina se il blocco è attualmente "Attivo" in base alle policy di scheduling.
     /// </summary>
+    private bool IsBlockActive()
+    {
+        var now = DateTime.Now;
+
+        // 1. Controllo Quick Block
+        if (_policy.QuickBlockEndTime.HasValue && _policy.QuickBlockEndTime.Value > now)
+        {
+            return true;
+        }
+
+        // 2. Controllo Scheduling
+        if (!_policy.ActiveDays.Contains(now.DayOfWeek))
+        {
+            return false;
+        }
+
+        var timeOfDay = now.TimeOfDay;
+        if (timeOfDay >= _policy.StartTime && timeOfDay <= _policy.EndTime)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private async Task ProcessKillerLoopAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("[ProcessKiller] Loop avviato - intervallo: {Interval}ms", _policy.PollingIntervalMs);
+        _logger.LogInformation("[ProcessKiller] Loop WMI avviato - safety net ogni {Interval}ms", _policy.PollingIntervalMs);
+
+        System.Management.ManagementEventWatcher? watcher = null;
+        try
+        {
+            watcher = new System.Management.ManagementEventWatcher(
+                new System.Management.WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
+            
+            watcher.EventArrived += (sender, e) =>
+            {
+                try
+                {
+                    if (!IsBlockActive()) return;
+
+                    var processName = e.NewEvent["ProcessName"]?.ToString();
+                    if (processName != null)
+                    {
+                        if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                            processName = processName.Substring(0, processName.Length - 4);
+
+                        foreach (var blocked in _policy.BlockedProcesses)
+                        {
+                            if (string.Equals(processName, blocked, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.LogDebug("[ProcessKiller WMI] Rilevato processo in blacklist: {ProcessName}", processName);
+                                ProcessKiller.KillBlockedProcesses(new[] { blocked }, msg => _logger.LogDebug("{Message}", msg));
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[ProcessKiller WMI] Errore nell'handler dell'evento");
+                }
+            };
+            watcher.Start();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[ProcessKiller] Impossibile avviare WMI. Verrà utilizzato solo il polling completo.");
+        }
+
+        bool wasActive = false;
+        int safetyNetCounter = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                ProcessKiller.KillBlockedProcesses(
-                    _policy.BlockedProcesses,
-                    msg => _logger.LogDebug("{Message}", msg));
+                bool isActive = IsBlockActive();
+
+                if (isActive)
+                {
+                    // Se siamo appena diventati attivi, o ogni 10 cicli (circa 5 secondi), facciamo un controllo di sicurezza
+                    if (!wasActive || safetyNetCounter >= 10)
+                    {
+                        ProcessKiller.KillBlockedProcesses(
+                            _policy.BlockedProcesses,
+                            msg => _logger.LogDebug("{Message}", msg));
+                        
+                        safetyNetCounter = 0;
+                    }
+                    else
+                    {
+                        safetyNetCounter++;
+                    }
+                }
+                else
+                {
+                    safetyNetCounter = 0;
+                }
+                
+                wasActive = isActive;
             }
             catch (Exception ex)
             {
-                // RF5: Cattura qualsiasi eccezione per proteggere il loop
                 _logger.LogError(ex, "[ProcessKiller] Eccezione nel loop principale");
             }
 
-            // RNF2: Rilascio temporaneo del thread
             await Task.Delay(_policy.PollingIntervalMs, stoppingToken);
+        }
+
+        if (watcher != null)
+        {
+            watcher.Stop();
+            watcher.Dispose();
         }
     }
 
@@ -122,13 +215,28 @@ public class Worker : BackgroundService
     {
         _logger.LogInformation("[HostsFile] Loop riscrittura avviato - intervallo: {Interval}ms", _policy.HostsFileIntervalMs);
 
+        bool wasActive = true; // Assume inizialmente attivo o comunque valuta al primo giro
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                HostsFileManager.ApplyDnsBlock(
-                    _policy.BlockedDomains,
-                    msg => _logger.LogDebug("{Message}", msg));
+                bool isActive = IsBlockActive();
+
+                if (isActive)
+                {
+                    HostsFileManager.ApplyDnsBlock(
+                        _policy.BlockedDomains,
+                        msg => _logger.LogDebug("{Message}", msg));
+                    wasActive = true;
+                }
+                else if (wasActive)
+                {
+                    // Se siamo in pausa ma eravamo attivi, rimuoviamo i blocchi
+                    HostsFileManager.RemoveDnsBlock(msg => _logger.LogInformation("[HostsFile] Rimosso blocco DNS (In Pausa): {Message}", msg));
+                    HostsFileManager.FlushDnsCache(msg => _logger.LogDebug("{Message}", msg));
+                    wasActive = false;
+                }
             }
             catch (Exception ex)
             {

@@ -57,8 +57,12 @@ public static class HostsFileManager
 
             sb.AppendLine(BlockMarkerEnd);
 
-            File.WriteAllText(HostsFilePath, sb.ToString(), Encoding.UTF8);
-            logger?.Invoke($"[HostsFileManager] File hosts aggiornato con {blockedDomains.Count} domini bloccati.");
+            string newContent = sb.ToString();
+            if (!string.Equals(existingContent, newContent, StringComparison.Ordinal))
+            {
+                File.WriteAllText(HostsFilePath, newContent, Encoding.UTF8);
+                logger?.Invoke($"[HostsFileManager] File hosts aggiornato con {blockedDomains.Count} domini bloccati.");
+            }
         }
         catch (UnauthorizedAccessException ex)
         {

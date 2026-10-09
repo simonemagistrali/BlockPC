@@ -21,52 +21,40 @@ public static class ProcessKiller
     {
         if (blockedProcessNames.Count == 0) return;
 
-        Process[] allProcesses;
-        try
-        {
-            allProcesses = Process.GetProcesses();
-        }
-        catch (Exception ex)
-        {
-            // RF5: Chiusura silenziosa - non possiamo ottenere la lista processi
-            logger?.Invoke($"[ProcessKiller] Errore ottenimento processi: {ex.Message}");
-            return;
-        }
-
-        foreach (var process in allProcesses)
+        foreach (var blocked in blockedProcessNames)
         {
             try
             {
-                string processName = process.ProcessName;
-
-                foreach (var blocked in blockedProcessNames)
+                var processes = Process.GetProcessesByName(blocked);
+                foreach (var process in processes)
                 {
-                    if (string.Equals(processName, blocked, StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        logger?.Invoke($"[ProcessKiller] Terminazione processo: {processName} (PID: {process.Id})");
-
+                        logger?.Invoke($"[ProcessKiller] Terminazione processo: {process.ProcessName} (PID: {process.Id})");
                         process.Kill(entireProcessTree: true);
-                        break;
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        // RF5: Accesso negato
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // RF5: Processo già terminato
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.Invoke($"[ProcessKiller] Eccezione gestita su PID {process.Id}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        try { process.Dispose(); }
+                        catch { }
                     }
                 }
             }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                // RF5: Accesso negato - processo protetto dal kernel, ignorare silenziosamente
-            }
-            catch (InvalidOperationException)
-            {
-                // RF5: Processo già terminato tra la lettura e il kill, ignorare
-            }
             catch (Exception ex)
             {
-                // RF5: Qualsiasi altra eccezione viene gestita silenziosamente
-                logger?.Invoke($"[ProcessKiller] Eccezione gestita su PID {process.Id}: {ex.Message}");
-            }
-            finally
-            {
-                try { process.Dispose(); }
-                catch { /* Dispose sicuro */ }
+                logger?.Invoke($"[ProcessKiller] Errore ottenimento processi per {blocked}: {ex.Message}");
             }
         }
     }
