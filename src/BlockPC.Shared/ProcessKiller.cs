@@ -10,6 +10,44 @@ namespace BlockPC.Shared;
 public static class ProcessKiller
 {
     /// <summary>
+    /// Processi di sistema e strumenti essenziali che NON possono mai essere terminati
+    /// per prevenire instabilità di Windows o impossibilità di recupero del PC.
+    /// </summary>
+    private static readonly HashSet<string> ProtectedProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer",
+        "services",
+        "lsass",
+        "winlogon",
+        "csrss",
+        "smss",
+        "svchost",
+        "dwm",
+        "sihost",
+        "taskhostw",
+        "ctfmon",
+        "fontdrvhost",
+        "BlockPC.UI",
+        "BlockerService",
+        "WatchdogService",
+        "Code",
+        "wscript",
+        "cscript"
+    };
+
+    /// <summary>
+    /// Verifica se un processo fa parte della lista dei processi protetti.
+    /// </summary>
+    public static bool IsProtected(string? processName)
+    {
+        if (string.IsNullOrWhiteSpace(processName)) return false;
+        var clean = processName.Trim();
+        if (clean.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            clean = clean[..^4];
+        return ProtectedProcesses.Contains(clean);
+    }
+
+    /// <summary>
     /// Scansiona tutti i processi in esecuzione e termina quelli corrispondenti alla blacklist.
     /// Il confronto è case-insensitive e senza estensione .exe.
     /// </summary>
@@ -23,6 +61,12 @@ public static class ProcessKiller
 
         foreach (var blocked in blockedProcessNames)
         {
+            if (string.IsNullOrWhiteSpace(blocked)) continue;
+            if (IsProtected(blocked))
+            {
+                logger?.Invoke($"[ProcessKiller] Processo critico protetto ignorato: {blocked}");
+                continue;
+            }
             try
             {
                 var processes = Process.GetProcessesByName(blocked);

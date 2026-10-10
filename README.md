@@ -257,16 +257,11 @@ BlockPC/
 2. Fare clic destro su **`uninstall.bat`** e selezionare **"Esegui come amministratore"**.
 3. Lo script arresterà entrambi i servizi, rimuoverà le protezioni ACL, ripristinerà il file `hosts` originale ed eliminerà la registrazione dei servizi da Windows.
 
-### Procedura di Emergenza
-Qualora gli strumenti di sistema siano bloccati e non sia possibile eseguire la disinstallazione ordinaria:
-1. Riavviare il PC in **Modalità Provvisoria (Safe Mode)** di Windows (i servizi Windows personalizzati non vengono avviati automaticamente in Safe Mode).
-2. Aprire un prompt dei comandi come amministratore ed eseguire `uninstall.bat`, oppure digitare:
-   ```cmd
-   sc delete BlockPC.BlockerService
-   sc delete BlockPC.WatchdogService
-   ```
-3. Ripulire le righe di reindirizzamento in `C:\Windows\System32\drivers\etc\hosts`.
-4. Riavviare normalmente Windows.
+### Procedura di Emergenza (Sblocco Rapido in 1 Click)
+Qualora gli strumenti di sistema siano inaccessibili o il prompt dei comandi non sia avviabile:
+1. Fare doppio clic sul file **`sblocca_pc.vbs`** nella cartella principale del progetto e confermare la richiesta UAC di Windows.
+2. Lo script VBScript bypassa qualsiasi blocco, arresta e rimuove immediatamente entrambi i servizi, svuota la cache DNS e ripristina il file `hosts`.
+3. In alternativa, riavviare il PC in **Modalità Provvisoria (Safe Mode)** di Windows ed eseguire `uninstall.bat` come amministratore.
 
 ---
 

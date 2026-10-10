@@ -38,19 +38,15 @@ public class BlockingPolicy
 
     /// <summary>
     /// Abilita la protezione ACL sulla cartella di installazione.
-    /// RNF3: Impedisce la disinstallazione forzata a runtime.
+    /// RNF3: Impedisce la disinstallazione forzata a runtime. Default: false.
     /// </summary>
-    public bool EnableAclProtection { get; set; } = true;
+    public bool EnableAclProtection { get; set; } = false;
 
     /// <summary>
     /// Giorni della settimana in cui il blocco è attivo regolarmente.
-    /// RF2: Configurazione Fasce Orarie
+    /// Default vuoto: il blocco non parte automaticamente all'installazione senza configurazione utente.
     /// </summary>
-    public List<DayOfWeek> ActiveDays { get; set; } = new() 
-    { 
-        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, 
-        DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday 
-    };
+    public List<DayOfWeek> ActiveDays { get; set; } = new();
 
     /// <summary>
     /// Orario di inizio del blocco (es. 09:00:00).
@@ -60,7 +56,7 @@ public class BlockingPolicy
     /// <summary>
     /// Orario di fine del blocco (es. 18:00:00).
     /// </summary>
-    public TimeSpan EndTime { get; set; } = new TimeSpan(23, 59, 59);
+    public TimeSpan EndTime { get; set; } = TimeSpan.Zero;
 
     /// <summary>
     /// Data e ora esatta in cui termina il "Blocco Rapido".

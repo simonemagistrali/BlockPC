@@ -42,11 +42,20 @@ public class Worker : BackgroundService
             AclProtection.LockDown(_installDirectory, msg => _logger.LogWarning("{Message}", msg));
         }
 
-        // RF2: Applica blocco DNS immediatamente all'avvio
-        HostsFileManager.ApplyDnsBlock(
-            _policy.BlockedDomains,
-            msg => _logger.LogInformation("{Message}", msg));
-        HostsFileManager.FlushDnsCache(msg => _logger.LogInformation("{Message}", msg));
+        // RF2: Applica blocco DNS all'avvio SOLO se il blocco è attivo
+        if (IsBlockActive())
+        {
+            HostsFileManager.ApplyDnsBlock(
+                _policy.BlockedDomains,
+                msg => _logger.LogInformation("{Message}", msg));
+            HostsFileManager.FlushDnsCache(msg => _logger.LogInformation("{Message}", msg));
+        }
+        else
+        {
+            // Assicura che eventuali blocchi precedenti siano rimossi se il blocco non è attivo
+            HostsFileManager.RemoveDnsBlock(msg => _logger.LogInformation("{Message}", msg));
+            HostsFileManager.FlushDnsCache(msg => _logger.LogInformation("{Message}", msg));
+        }
 
         return base.StartAsync(cancellationToken);
     }
@@ -111,6 +120,8 @@ public class Worker : BackgroundService
                     {
                         if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                             processName = processName.Substring(0, processName.Length - 4);
+
+                        if (ProcessKiller.IsProtected(processName)) return;
 
                         foreach (var blocked in _policy.BlockedProcesses)
                         {
